@@ -1,0 +1,82 @@
+name: deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: custom-zenerp
+  GCP_REGION: southamerica-east1
+  CLOUD_RUN_SERVICE: custom-zenerp
+  ZEN_TOKEN_SECRET: zen-token
+  GCP_WIF_PROVIDER: projects/303879540383/locations/global/workloadIdentityPools/github-zenerp-br-custom/providers/github-zenerp-br-custom
+  GCP_DEPLOY_SA: 303879540383-compute@developer.gserviceaccount.com
+  IMAGE: southamerica-east1-docker.pkg.dev/custom-zenerp/cloud-run-source-deploy/custom-zenerp
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract Tenant from Repo Name
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          ZEN_TENANT=$(echo "$REPO_NAME" | cut -d'.' -f1)
+          echo "ZEN_TENANT=$ZEN_TENANT" >> $GITHUB_ENV
+          echo "Extracted tenant: $ZEN_TENANT from repository: $REPO_NAME"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOY_SA }}
+          token_format: access_token
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+          env_vars: |
+            ZEN_TENANT=${{ env.ZEN_TENANT }}
+          secrets: |
+            ZEN_TOKEN=${{ env.ZEN_TOKEN_SECRET }}:latest
+          flags: --allow-unauthenticated --memory=512Mi --timeout=60
+
+      - name: Smoke test
+        run: curl --fail --silent --show-error "${{ steps.deploy.outputs.url }}/"
