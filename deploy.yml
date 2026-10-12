@@ -13,7 +13,6 @@ concurrency:
 env:
   GCP_PROJECT_ID: custom-zenerp
   GCP_REGION: southamerica-east1
-  CLOUD_RUN_SERVICE: custom-zenerp
   ZEN_TOKEN_SECRET: zen-token
   GCP_WIF_PROVIDER: projects/303879540383/locations/global/workloadIdentityPools/github-zenerp-br-custom/providers/github-zenerp-br-custom
   GCP_DEPLOY_SA: 303879540383-compute@developer.gserviceaccount.com
@@ -29,12 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract Tenant from Repo Name
+      - name: Extract tenant and service name
         run: |
           REPO_NAME="${{ github.event.repository.name }}"
           ZEN_TENANT=$(echo "$REPO_NAME" | cut -d'.' -f1)
+          CLOUD_RUN_SERVICE="tenant-$ZEN_TENANT"
+
           echo "ZEN_TENANT=$ZEN_TENANT" >> $GITHUB_ENV
-          echo "Extracted tenant: $ZEN_TENANT from repository: $REPO_NAME"
+          echo "CLOUD_RUN_SERVICE=$CLOUD_RUN_SERVICE" >> $GITHUB_ENV
+
+          echo "Extracted tenant: $ZEN_TENANT, Cloud Run service: $CLOUD_RUN_SERVICE from repository: $REPO_NAME"
 
       - name: Authenticate to Google Cloud
         id: auth

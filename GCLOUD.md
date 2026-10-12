@@ -106,3 +106,15 @@ gcloud iam service-accounts add-iam-policy-binding "303879540383-compute@develop
 ```
 
 _How to verify:_ Run `gcloud iam service-accounts get-iam-policy "303879540383-compute@developer.gserviceaccount.com"` to verify `serviceAccountUser`.
+
+11.
+
+```yaml
+constraint: constraints/iam.allowedPolicyMemberDomains
+listPolicy:
+  allValues: ALLOW
+```
+
+```bash
+gcloud resource-manager org-policies set-policy policy.yaml --project=custom-zenerp
+```
